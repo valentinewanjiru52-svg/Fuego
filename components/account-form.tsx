@@ -32,7 +32,11 @@ export function AccountForm({ profile }: { profile: Profile }) {
       )
     ) {
       startTransition(async () => {
-        await deleteAccount();
+        // On success the action redirects and never resolves with a value.
+        const result = await deleteAccount();
+        if (result && !result.ok) {
+          setMessage({ kind: "error", text: result.error ?? "Deletion failed — please try again." });
+        }
       });
     }
   }

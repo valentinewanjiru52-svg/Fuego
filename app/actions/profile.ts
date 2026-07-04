@@ -5,8 +5,7 @@ import { redirect } from "next/navigation";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { requireUserId } from "@/lib/data";
-
-const KE_PHONE = /^\+254[17]\d{8}$/;
+import { KE_PHONE_REGEX } from "@/lib/kenya";
 
 export interface ActionResult {
   ok: boolean;
@@ -21,7 +20,7 @@ export async function updateProfile(formData: FormData): Promise<ActionResult> {
   const idNumber = String(formData.get("id_number") ?? "").trim();
 
   if (!fullName) return { ok: false, error: "Full name is required — police need it for the OB." };
-  if (phone && !KE_PHONE.test(phone))
+  if (phone && !KE_PHONE_REGEX.test(phone))
     return { ok: false, error: "Phone must be in Kenyan +254 format, e.g. +254712345678." };
   if (idNumber && !/^\d{6,10}$/.test(idNumber))
     return { ok: false, error: "National ID number should be 6–10 digits." };
@@ -42,15 +41,23 @@ export async function updateProfile(formData: FormData): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function deleteAccount(): Promise<never> {
+export async function deleteAccount(): Promise<ActionResult> {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  // Remove all app data first (devices/incidents cascade from users).
+  // Remove all app data first (devices/incidents cascade from users). If this
+  // fails we must NOT delete the Clerk account, or the orphaned rows could
+  // never be deleted by anyone.
   const supabase = await createServerSupabaseClient();
-  await supabase.from("users").delete().eq("id", userId);
+  const { error } = await supabase.from("users").delete().eq("id", userId);
+  if (error) {
+    return {
+      ok: false,
+      error: `Could not delete your data (${error.message}). Your sign-in account was NOT deleted — please try again.`,
+    };
+  }
 
-  // Then delete the Clerk account itself.
+  // Only now delete the Clerk account itself.
   const client = await clerkClient();
   await client.users.deleteUser(userId);
 

@@ -5,9 +5,8 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ensureProfile, requireUserId } from "@/lib/data";
 import { imeiError, normalizeImei } from "@/lib/imei";
-import type { CarrierId } from "@/lib/kenya";
+import { KE_PHONE_REGEX, type CarrierId } from "@/lib/kenya";
 
-const KE_PHONE = /^\+254[17]\d{8}$/;
 const CARRIER_IDS: CarrierId[] = ["safaricom", "airtel", "telkom", "multiple"];
 
 export interface ActionResult {
@@ -44,7 +43,7 @@ function parseDeviceForm(formData: FormData): { error?: string; values?: Record<
   }
 
   if (!CARRIER_IDS.includes(carrier)) return { error: "Pick a carrier." };
-  if (msisdn && !KE_PHONE.test(msisdn))
+  if (msisdn && !KE_PHONE_REGEX.test(msisdn))
     return { error: "Device phone number must be in +254 format, e.g. +254712345678." };
 
   return {
@@ -90,8 +89,13 @@ export async function updateDevice(deviceId: string, formData: FormData): Promis
   if (parsed.error || !parsed.values) return { ok: false, error: parsed.error ?? "Invalid form." };
 
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.from("devices").update(parsed.values).eq("id", deviceId);
+  const { data, error } = await supabase
+    .from("devices")
+    .update(parsed.values)
+    .eq("id", deviceId)
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if (!data?.length) return { ok: false, error: "Device not found — nothing was saved." };
 
   revalidatePath("/devices");
   revalidatePath(`/devices/${deviceId}`);

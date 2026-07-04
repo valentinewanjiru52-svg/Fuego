@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,16 +40,21 @@ export function ReportWizard({
   devices: Device[];
   preselectedDeviceId?: string;
 }) {
-  const [step, setStep] = useState<Step>("device");
+  const preselected = devices.find((d) => d.id === preselectedDeviceId) ?? null;
+  // A device deep-link ("Report this device stolen") skips straight to step 2.
+  const [step, setStep] = useState<Step>(preselected ? "details" : "device");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(
-    devices.find((d) => d.id === preselectedDeviceId) ?? null,
-  );
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(preselected);
   const [showUnregistered, setShowUnregistered] = useState(devices.length === 0);
 
-  const [occurredAt, setOccurredAt] = useState(nowLocalDatetime());
+  // Default "now" is filled in after mount: the value is minute-precise and
+  // client-local, so computing it during SSR risks a hydration mismatch.
+  const [occurredAt, setOccurredAt] = useState("");
+  useEffect(() => {
+    setOccurredAt((value) => value || nowLocalDatetime());
+  }, []);
   const [location, setLocation] = useState("");
   const [narrative, setNarrative] = useState("");
 

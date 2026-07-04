@@ -18,6 +18,13 @@ export function DeviceForm({ device }: { device?: Device }) {
   const [error, setError] = useState<string | null>(null);
   const [imeiHint, setImeiHint] = useState<string | null>(null);
 
+  // Keep a stored make selectable even if it's no longer in the preset list,
+  // otherwise editing would silently reset the field and fail validation.
+  const makeOptions =
+    device && device.make && !DEVICE_MAKES.includes(device.make)
+      ? [device.make, ...DEVICE_MAKES]
+      : DEVICE_MAKES;
+
   function checkImei(value: string) {
     const v = normalizeImei(value);
     setImeiHint(v.length > 0 ? imeiError(v) : null);
@@ -72,7 +79,7 @@ export function DeviceForm({ device }: { device?: Device }) {
             <option value="" disabled>
               Select make…
             </option>
-            {DEVICE_MAKES.map((make) => (
+            {makeOptions.map((make) => (
               <option key={make} value={make}>
                 {make}
               </option>

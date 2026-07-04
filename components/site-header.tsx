@@ -1,11 +1,18 @@
+"use client";
+
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
+import { useAuth } from "@clerk/nextjs";
 import { UserButton } from "@clerk/nextjs";
 import { Flame } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export async function SiteHeader() {
-  const { userId } = await auth();
+/**
+ * Client component on purpose: checking auth() server-side in the root
+ * layout would force every page — including the static marketing pages —
+ * to render dynamically on each request.
+ */
+export function SiteHeader() {
+  const { isLoaded, isSignedIn } = useAuth();
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
@@ -16,7 +23,7 @@ export async function SiteHeader() {
         </Link>
 
         <nav className="flex items-center gap-1 sm:gap-2">
-          {!userId ? (
+          {!isLoaded ? null : !isSignedIn ? (
             <>
               <Link href="/how-it-works" className="hidden px-3 py-2 text-sm hover:underline sm:block">
                 How it works

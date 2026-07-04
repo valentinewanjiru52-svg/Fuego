@@ -115,6 +115,9 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 export function ResponseChecklist({ incident, device, profile }: ChecklistProps) {
   const [state, setState] = useState(incident);
   const [pending, startTransition] = useTransition();
+  // Track in-flight saves per field so ticking one box never disables the
+  // others — the user may be working fast, on a slow connection.
+  const [pendingFields, setPendingFields] = useState<ReadonlySet<ChecklistField>>(new Set());
   const [stationQuery, setStationQuery] = useState("");
   const [obDraft, setObDraft] = useState(incident.ob_number ?? "");
   const [stationDraft, setStationDraft] = useState(incident.police_station ?? "");
@@ -123,9 +126,15 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
 
   function toggle(field: ChecklistField, value: boolean) {
     setState((s) => ({ ...s, [field]: value }));
+    setPendingFields((p) => new Set(p).add(field));
     startTransition(async () => {
       const result = await setChecklistItem(incident.id, field, value);
       if (!result.ok) setState((s) => ({ ...s, [field]: !value })); // revert on failure
+      setPendingFields((p) => {
+        const next = new Set(p);
+        next.delete(field);
+        return next;
+      });
     });
   }
 
@@ -191,7 +200,6 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
         title="Lock your SIM and M-PESA immediately"
         done={state.carrier_block_confirmed && state.mpesa_locked}
         skipWarning={MPESA_WARNING}
-        pending={pending}
       >
         {carriers.map((carrier) => (
           <div key={carrier.name} className="rounded-md border p-3">
@@ -227,7 +235,7 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
             <input
               type="checkbox"
               checked={state.carrier_block_confirmed}
-              disabled={pending}
+              disabled={pendingFields.has("carrier_block_confirmed")}
               onChange={(e) => toggle("carrier_block_confirmed", e.target.checked)}
               className="h-5 w-5 accent-emerald-700"
             />
@@ -237,7 +245,7 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
             <input
               type="checkbox"
               checked={state.mpesa_locked}
-              disabled={pending}
+              disabled={pendingFields.has("mpesa_locked")}
               onChange={(e) => toggle("mpesa_locked", e.target.checked)}
               className="h-5 w-5 accent-emerald-700"
             />
@@ -256,7 +264,6 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
           (showGoogle || showIcloud)
         }
         skipWarning="Your email is the master key to every other account. A thief inside your Gmail or iCloud can reset your bank passwords and read your one-time PINs."
-        pending={pending}
       >
         <p className="text-sm">
           Mark the device as <strong>lost</strong> and sign out. Do <strong>NOT</strong> erase it
@@ -287,7 +294,7 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
               <input
                 type="checkbox"
                 checked={state.google_account_signed_out}
-                disabled={pending}
+                disabled={pendingFields.has("google_account_signed_out")}
                 onChange={(e) => toggle("google_account_signed_out", e.target.checked)}
                 className="h-5 w-5 accent-emerald-700"
               />
@@ -299,7 +306,7 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
               <input
                 type="checkbox"
                 checked={state.icloud_signed_out}
-                disabled={pending}
+                disabled={pendingFields.has("icloud_signed_out")}
                 onChange={(e) => toggle("icloud_signed_out", e.target.checked)}
                 className="h-5 w-5 accent-emerald-700"
               />
@@ -315,7 +322,6 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
         title="Go to the nearest police station and get an OB number"
         done={!!state.ob_number}
         skipWarning="Without an OB number, KE-CIRT will not blacklist the IMEI and DCI cannot open a case. Insurance and carrier IMEI-blocking also need it."
-        pending={pending}
       >
         <a href={`/api/ob-kit/${device.id}?incident=${incident.id}`}>
           <Button>
@@ -392,8 +398,8 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
         title="Register the IMEI with KE-CIRT"
         done={state.kecirt_reported}
         onToggle={(v) => toggle("kecirt_reported", v)}
+        pending={pendingFields.has("kecirt_reported")}
         skipWarning="An unblacklisted IMEI means the phone can be resold and reused on Kenyan networks — and you lose the paper trail that proves you acted."
-        pending={pending}
       >
         <p className="text-sm">
           Email <a className="font-mono underline" href={`mailto:${KECIRT.email}`}>{KECIRT.email}</a>{" "}
@@ -447,8 +453,8 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
         title="Register on LostPhoneKE"
         done={state.lostphoneke_registered}
         onToggle={(v) => toggle("lostphoneke_registered", v)}
+        pending={pendingFields.has("lostphoneke_registered")}
         skipWarning="LostPhoneKE is checked by second-hand buyers and repair shops. An unlisted phone is easier to resell."
-        pending={pending}
       >
         <a href={LOSTPHONE_KE.url} target="_blank" rel="noopener noreferrer">
           <Button size="sm">
@@ -471,8 +477,8 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
         title="Change passwords on high-risk accounts"
         done={state.passwords_changed}
         onToggle={(v) => toggle("passwords_changed", v)}
+        pending={pendingFields.has("passwords_changed")}
         skipWarning="Saved sessions on the stolen phone stay logged in until you change passwords or force sign-outs. Banking apps and email are the priority."
-        pending={pending}
       >
         <ul className="list-disc space-y-1 pl-5 text-sm">
           {HIGH_RISK_ACCOUNTS.map((account) => (
@@ -488,7 +494,7 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
             <input
               type="checkbox"
               checked={state.financial_loss}
-              disabled={pending}
+              disabled={pendingFields.has("financial_loss")}
               onChange={(e) => toggle("financial_loss", e.target.checked)}
               className="h-5 w-5 accent-red-600"
             />
@@ -503,8 +509,8 @@ export function ResponseChecklist({ incident, device, profile }: ChecklistProps)
           title="Report to DCI Cybercrime — money was taken"
           done={state.dci_reported}
           onToggle={(v) => toggle("dci_reported", v)}
+          pending={pendingFields.has("dci_reported")}
           skipWarning="Fraud recovery through Safaricom or your bank moves much faster with a DCI case number. Report while transactions are fresh."
-          pending={pending}
         >
           <div className="flex flex-wrap gap-2">
             <a href={`tel:${DCI_CYBERCRIME.tollFree.replace(/\s/g, "")}`}>

@@ -6,6 +6,9 @@
 
 export type CarrierId = "safaricom" | "airtel" | "telkom" | "multiple";
 
+/** Kenyan mobile numbers in E.164: +254 then 7xx or 1xx and 8 digits. */
+export const KE_PHONE_REGEX = /^\+254[17]\d{8}$/;
+
 export interface CarrierInfo {
   name: string;
   freeFromNetwork: string;

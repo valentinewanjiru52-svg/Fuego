@@ -70,11 +70,13 @@ export async function setChecklistItem(
   if (!CHECKLIST_FIELDS.includes(field)) return { ok: false, error: "Unknown checklist item." };
 
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("incidents")
     .update({ [field]: value })
-    .eq("id", incidentId);
+    .eq("id", incidentId)
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if (!data?.length) return { ok: false, error: "Incident not found — nothing was saved." };
 
   revalidatePath(`/incidents/${incidentId}`);
   revalidatePath("/incidents");
@@ -95,18 +97,25 @@ export async function updateIncidentReferences(
 
   const supabase = await createServerSupabaseClient();
 
-  // Getting an OB number moves the incident from "reporting" to "filed".
-  if (update.ob_number) {
+  // Getting an OB number moves the incident from "reporting" to "filed";
+  // clearing it moves a filed incident back so the badges never lie.
+  if ("ob_number" in update) {
     const { data } = await supabase
       .from("incidents")
       .select("status")
       .eq("id", incidentId)
       .maybeSingle();
-    if (data?.status === "reporting") update.status = "filed";
+    if (update.ob_number && data?.status === "reporting") update.status = "filed";
+    if (!update.ob_number && data?.status === "filed") update.status = "reporting";
   }
 
-  const { error } = await supabase.from("incidents").update(update).eq("id", incidentId);
+  const { data, error } = await supabase
+    .from("incidents")
+    .update(update)
+    .eq("id", incidentId)
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if (!data?.length) return { ok: false, error: "Incident not found — nothing was saved." };
 
   revalidatePath(`/incidents/${incidentId}`);
   revalidatePath("/incidents");
@@ -119,8 +128,13 @@ export async function setIncidentStatus(
 ): Promise<ActionResult> {
   await requireUserId();
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.from("incidents").update({ status }).eq("id", incidentId);
+  const { data, error } = await supabase
+    .from("incidents")
+    .update({ status })
+    .eq("id", incidentId)
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if (!data?.length) return { ok: false, error: "Incident not found — nothing was saved." };
   revalidatePath(`/incidents/${incidentId}`);
   revalidatePath("/incidents");
   revalidatePath("/dashboard");
